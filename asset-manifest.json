@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/camera-qna-react/static/css/main.e6c13ad2.css",
-    "main.js": "/camera-qna-react/static/js/main.988dd800.js",
+    "main.js": "/camera-qna-react/static/js/main.ad3c1389.js",
     "static/js/453.3a5fd07b.chunk.js": "/camera-qna-react/static/js/453.3a5fd07b.chunk.js",
     "index.html": "/camera-qna-react/index.html",
     "main.e6c13ad2.css.map": "/camera-qna-react/static/css/main.e6c13ad2.css.map",
-    "main.988dd800.js.map": "/camera-qna-react/static/js/main.988dd800.js.map",
+    "main.ad3c1389.js.map": "/camera-qna-react/static/js/main.ad3c1389.js.map",
     "453.3a5fd07b.chunk.js.map": "/camera-qna-react/static/js/453.3a5fd07b.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.988dd800.js"
+    "static/js/main.ad3c1389.js"
   ]
 }
