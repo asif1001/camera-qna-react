@@ -1,10 +1,12 @@
 import React, { useRef, useEffect, useState } from "react";
 import Webcam from "react-webcam";
 import axios from "axios";
-import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, TextField, DialogActions } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 
-const DEFAULT_PROMPT = "You are a multiple-choice answering assistant. Read the following question and options, and answer with only the correct option letter (e.g., A, B, C, or D).";
-const DEFAULT_INTERVAL = 40; // seconds
+const OCR_API_KEY = ""; // input this in your settings modal, not here!
+const CAPTURE_INTERVAL = 40 * 1000;
+
+const PROMPT = "You are a multiple-choice answering assistant. Read the following question and options, and answer with only the correct option letter (e.g., A, B, C, or D).";
 
 function App() {
   const webcamRef = useRef<Webcam>(null);
@@ -12,52 +14,43 @@ function App() {
   const [dotColor, setDotColor] = useState("red");
   const [answer, setAnswer] = useState<string>("");
   const [status, setStatus] = useState<string>("Idle");
+  const [borderColor, setBorderColor] = useState("rgba(0,0,0,0.15)");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Settings state
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [openAiKey, setOpenAiKey] = useState(localStorage.getItem("openaiKey") || "");
-  const [ocrKey, setOcrKey] = useState(localStorage.getItem("ocrKey") || "");
-  const [prompt, setPrompt] = useState(localStorage.getItem("customPrompt") || DEFAULT_PROMPT);
-  const [interval, setIntervalState] = useState(Number(localStorage.getItem("interval") || DEFAULT_INTERVAL));
-
-  // Camera constraints
-  const videoConstraints = { facingMode: "environment", width: 640, height: 480 };
+  // Show preview only when capturing
+  const previewSize = capturing ? { width: 120, height: 90 } : { width: 0, height: 0 };
 
   useEffect(() => {
     if (capturing) {
       setDotColor("green");
+      setStatus("Starting...");
       captureAndProcess();
-      timerRef.current = setInterval(captureAndProcess, interval * 1000);
+      timerRef.current = setInterval(captureAndProcess, CAPTURE_INTERVAL);
       return () => { if (timerRef.current) clearInterval(timerRef.current); };
     } else {
       setDotColor("red");
       if (timerRef.current) clearInterval(timerRef.current);
       setStatus("Idle");
     }
-  // eslint-disable-next-line
-  }, [capturing, interval, openAiKey, ocrKey, prompt]);
+    // eslint-disable-next-line
+  }, [capturing]);
 
   const captureAndProcess = async () => {
-    if (!openAiKey || !ocrKey) {
-      setStatus("Enter API keys in settings");
-      setCapturing(false);
-      return;
-    }
-    setStatus("Capturing...");
+    setStatus("Capturing image...");
+    flashPreview();
     if (webcamRef.current) {
       const imageSrc = webcamRef.current.getScreenshot();
       if (imageSrc) {
         setStatus("Extracting text...");
         const text = await doOcr(imageSrc);
-        if (!text) {
+        if (!text.trim()) {
           setStatus("No text found.");
           setAnswer("");
           return;
         }
         setStatus("Getting answer...");
         const aiAnswer = await askOpenAI(text);
-        setStatus("Complete");
+        setStatus("Done");
         setAnswer(aiAnswer);
       } else {
         setStatus("Camera failed.");
@@ -65,15 +58,20 @@ function App() {
     }
   };
 
-  // Send image (base64) to OCR.Space
+  // Highlight border when snapshot taken
+  const flashPreview = () => {
+    setBorderColor("yellow");
+    setTimeout(() => setBorderColor("rgba(0,0,0,0.15)"), 400);
+  };
+
   async function doOcr(imageBase64: string): Promise<string> {
+    // (Same as before, uses OCR.Space)
     try {
       const formData = new FormData();
       formData.append("base64Image", imageBase64);
-      formData.append("apikey", ocrKey);
+      formData.append("apikey", OCR_API_KEY);
       formData.append("language", "eng");
       formData.append("isTable", "false");
-
       const response = await axios.post("https://api.ocr.space/parse/image", formData);
       const parsedText = response.data?.ParsedResults?.[0]?.ParsedText;
       return parsedText || "";
@@ -83,20 +81,22 @@ function App() {
     }
   }
 
-  // Send OCR result to ChatGPT API with your prompt
   async function askOpenAI(question: string): Promise<string> {
+    // (You should pass OpenAI API key via settings/input, not hardcoded!)
     try {
+      const OPENAI_API_KEY = ""; // <- Get from user input/settings modal
+      if (!OPENAI_API_KEY) return "No API key!";
       const res = await axios.post(
         "https://api.openai.com/v1/chat/completions",
         {
           model: "gpt-3.5-turbo",
           messages: [
-            { role: "system", content: prompt },
+            { role: "system", content: PROMPT },
             { role: "user", content: question }
           ],
           max_tokens: 5,
         },
-        { headers: { Authorization: `Bearer ${openAiKey}` } }
+        { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
       );
       return res.data.choices?.[0]?.message?.content?.trim() || "";
     } catch (e) {
@@ -105,42 +105,37 @@ function App() {
     }
   }
 
-  // Settings dialog handlers
-  const openSettings = () => setSettingsOpen(true);
-
-  const saveSettings = () => {
-    localStorage.setItem("openaiKey", openAiKey.trim());
-    localStorage.setItem("ocrKey", ocrKey.trim());
-    localStorage.setItem("customPrompt", prompt);
-    localStorage.setItem("interval", interval.toString());
-    setSettingsOpen(false);
-  };
-
   return (
     <Box minHeight="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="center" bgcolor="#f6fbf9">
-      {/* Invisible webcam */}
-      <div style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", pointerEvents: "none" }}>
-        <Webcam
-          ref={webcamRef}
-          audio={false}
-          screenshotFormat="image/png"
-          videoConstraints={videoConstraints}
-          width={1}
-          height={1}
-        />
-      </div>
-      {/* Settings button */}
-      <Button
-        sx={{ position: "absolute", top: 16, right: 16 }}
-        variant="outlined"
-        onClick={openSettings}
-      >Settings</Button>
-
+      {/* Webcam Preview */}
+      <Box
+        sx={{
+          border: `2px solid ${borderColor}`,
+          borderRadius: 3,
+          overflow: "hidden",
+          mb: 2,
+          width: previewSize.width,
+          height: previewSize.height,
+          transition: "border 0.2s"
+        }}
+      >
+        {capturing && (
+          <Webcam
+            ref={webcamRef}
+            audio={false}
+            screenshotFormat="image/png"
+            videoConstraints={{ facingMode: "environment", width: 640, height: 480 }}
+            width={120}
+            height={90}
+            style={{ background: "#222" }}
+          />
+        )}
+      </Box>
       {/* Status Dot */}
       <Box
         sx={{
           width: 22, height: 22, borderRadius: "50%", background: dotColor,
-          border: "2px solid #eee", mb: 2, mt: -10
+          border: "2px solid #eee", mb: 2
         }}
       />
       {/* Controls */}
@@ -159,47 +154,6 @@ function App() {
       {/* Status and Answer */}
       <Typography variant="body1" sx={{ mb: 1 }}>{status}</Typography>
       <Typography variant="h5" color="primary">{answer}</Typography>
-
-      {/* Settings Dialog */}
-      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-        <DialogTitle>Settings</DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
-          <TextField
-            label="OpenAI API Key"
-            value={openAiKey}
-            onChange={e => setOpenAiKey(e.target.value)}
-            type="password"
-            autoComplete="off"
-            fullWidth
-          />
-          <TextField
-            label="OCR.Space API Key"
-            value={ocrKey}
-            onChange={e => setOcrKey(e.target.value)}
-            type="password"
-            autoComplete="off"
-            fullWidth
-          />
-          <TextField
-            label="Prompt"
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            multiline
-            minRows={2}
-            fullWidth
-          />
-          <TextField
-            label="Scan Interval (seconds)"
-            value={interval}
-            onChange={e => setIntervalState(Number(e.target.value))}
-            type="number"
-            fullWidth
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={saveSettings} variant="contained">Save</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
